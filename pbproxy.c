@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <ctype.h>
+#include <time.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include <sys/socket.h>
@@ -12,80 +14,14 @@
 #include <openssl/rand.h>
 #include <string.h>
 #include <stdbool.h>
+#include "pbproxy.h"
 
 #define SIZE 4096
 
-void* process(void* blob);
+void* thread_process(void* proc) {
+	if (proc) {
 
-struct ctr_state {
-	unsigned char ivec[AES_BLOCK_SIZE];
-	unsigned int num;
-	unsigned char ecount[AES_BLOCK_SIZE];
-};
-
-struct connection {
-	int sock;
-	unsigned int addr_len;
-	unsigned char *key;
-	struct sockaddr address;
-	struct sockaddr_in client_address;
-};
-
-void init_ctr(struct ctr_state *state, const unsigned char iv[8]) {
-	/* aes_ctr128_encrypt requires 'num' and 'ecount' set to zero on the
-	 * first call. */
-	state->num = 0;
-	memset(state->ecount, 0, AES_BLOCK_SIZE);
-
-	/* Initialise counter in 'ivec' to 0 */
-	memset(state->ivec + 8, 0, 8);
-
-	/* Copy IV into 'ivec' */
-	memcpy(state->ivec, iv, 8);
-}
-
-void startServer(int sock, struct sockaddr_in *client_address, unsigned char *key) {
-	struct connection *connection;
-	pthread_t thread;
-
-	connection = (struct connection *)malloc(sizeof(struct connection));
-	connection->sock = accept(sock, &connection->address, &connection->addr_len);
-	if (connection->sock > 0) {
-		connection->client_address = *client_address;
-		connection->key = key;
-		pthread_create(&thread, 0, process, (void*)connection);
-		pthread_detach(thread);
-	} else {
-		free(connection);
-	}
-}
-
-unsigned char* read_file(char* filename) {
-	unsigned char *buf = 0;
-	long len;
-	FILE *f = fopen (filename, "rb");
-
-	if (f) {
-		fseek (f, 0, SEEK_END);
-		len = ftell (f);
-		fseek (f, 0, SEEK_SET);
-		buf = malloc (len);
-		if (buf)
-			fread (buf, 1, len, f);
-		fclose (f);
-	} else
-		return 0;
-
-	return buf;
-}
-
-void* process(void* blob) {
-	if (!blob) {
-		printf("blob null\n");
-		pthread_exit(0);
-	}
-
-	struct connection *conn = (struct connection *)blob;
+	struct connection *conn = (struct connection *)proc;
 	unsigned char buf[SIZE];
 	int sock, n;
 	bool end = false;
@@ -177,7 +113,65 @@ void* process(void* blob) {
 	close(sock);
 	free(conn);
 	pthread_exit(0);
+	}
+	else
+	{
+		printf("closing due to failure\n");
+		pthread_exit(0);
+		
+
+	}
 }
+
+
+void init_ctr(struct ctr_state *state, const unsigned char iv[8]) {
+	/* aes_ctr128_encrypt requires 'num' and 'ecount' set to zero on the
+	 * first call. */
+	state->num = 0;
+	memset(state->ecount, 0, AES_BLOCK_SIZE);
+
+	/* Initialise counter in 'ivec' to 0 */
+	memset(state->ivec + 8, 0, 8);
+
+	/* Copy IV into 'ivec' */
+	memcpy(state->ivec, iv, 8);
+}
+
+void startServer(int sock, struct sockaddr_in *client_address, unsigned char *key) {
+	struct connection *connection;
+	pthread_t thread;
+
+	connection = (struct connection *)malloc(sizeof(struct connection));
+	connection->sock = accept(sock, &connection->address, &connection->addr_len);
+	if (connection->sock > 0) {
+		connection->client_address = *client_address;
+		connection->key = key;
+		pthread_create(&thread, 0, thread_process, (void*)connection);
+		pthread_detach(thread);
+	} else {
+		free(connection);
+	}
+}
+
+unsigned char* read_file(char* filename) {
+	unsigned char *buf = 0;
+	long len;
+	FILE *f = fopen (filename, "rb");
+
+	if (f) {
+		fseek (f, 0, SEEK_END);
+		len = ftell (f);
+		fseek (f, 0, SEEK_SET);
+		buf = malloc (len);
+		if (buf)
+			fread (buf, 1, len, f);
+		fclose (f);
+	} else
+		return 0;
+
+	return buf;
+}
+
 
 int main(int argc, char *argv[]) {
 	int opt = 0;
