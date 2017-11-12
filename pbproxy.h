@@ -1,5 +1,18 @@
 #ifndef _pbproxy_h
 #define _pbproxy_h
+
+int sock, val , conn_check;
+
+int flags;
+
+bool end;
+
+int opt = 0;
+bool server = false;
+char *dest = NULL;
+char *destport = NULL;
+char *listenport = NULL;
+char *filename = NULL;
  
 void* thread_process(void* proc);
 
@@ -10,7 +23,7 @@ struct ctr_state {
 };
 
 
-struct connection {
+struct struct_connection {
 	int sock;
 	unsigned int addr_len;
 	unsigned char *key;
@@ -18,7 +31,13 @@ struct connection {
 	struct sockaddr_in client_address;
 };
 
-void init_ctr(struct ctr_state *state, const unsigned char iv[8]);
+struct struct_connection *socket_connection;
+
+struct ctr_state state;
+	
+unsigned char iv[8];
+
+void set_struct_start(struct ctr_state *state, const unsigned char iv[8]);
 
 void startServer(int sock, struct sockaddr_in *client_address, unsigned char *key);
 

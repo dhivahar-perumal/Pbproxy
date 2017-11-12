@@ -18,90 +18,176 @@
 
 #define SIZE 4096
 
+void memcopy_fn(void *dest, void *src, size_t n)
+{
+   char *csrc = (char *)src;
+   char *cdest = (char *)dest;
+ 
+   for (int i=0; i<n; i++)
+       cdest[i] = csrc[i];
+}
+
 void* thread_process(void* proc) {
+	
+	/* The thread process created as a process of the pthread_create 
+	   It receives a single struct of type struct_connection      */
+
 	if (proc) {
 
-	struct connection *conn = (struct connection *)proc;
-	unsigned char buf[SIZE];
-	int sock, n;
-	bool end = false;
+	/* initialising the struct for establishing the connection */
 
-	struct ctr_state state;
+	socket_connection = (struct struct_connection *)proc;
+
+	/* A buffer is set for communicating with the requests between the processes */
+
+	unsigned char buf[SIZE];
+	
 	AES_KEY aes_key;
-	unsigned char iv[8];
+
+	/* The end of file descriptor is handled by this variable */
+
+	end = false;
+
+	/*  Getting a socket to start communcating */
 
 	sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (connect(sock, (struct sockaddr *)&conn->client_address, sizeof(conn->client_address)) < 0) {
-		printf("Connect failed\n");
-		pthread_exit(0);
-	}
 
-	int flags = fcntl(conn->sock, F_GETFL);
-	if (flags < 0) {
-		printf("fcntl sock error\n");
-		close(conn->sock);
+	conn_check = connect(sock, (struct sockaddr *)&socket_connection->client_address, sizeof(socket_connection->client_address));	
+	
+	/*  Handling the connection error when the connect() returns a value of -1 */
+
+	if (conn_check == -1) {
+		printf("SSH Connection failed\n");
+		printf("The connect returned a value of %d\n",conn_check);
+	
+	/*  Exiting the thread on failure*/
+
+		pthread_exit(0);
+
+	}
+	else 
+	{
+		printf("SSH Connection Successful\n");	
+	}
+	
+
+	flags = fcntl(socket_connection->sock, F_GETFL);
+
+	
+	if (flags == -1) {
+
+		/* Closing the connection */		
+				
+		close(socket_connection->sock);
 		close(sock);
-		free(conn);
+
+		printf("The socket connections are closed");
+
+		free(socket_connection);
+
+		printf("The flags returned error with a value of %d\n",flags);		
+				
+		/*  Exiting the thread on failure */		
+
 		pthread_exit(0);
 	}
 
-	fcntl(conn->sock, F_SETFL, flags | O_NONBLOCK);
+
+	fcntl(socket_connection->sock, F_SETFL, flags | O_NONBLOCK);
+	
 	flags = fcntl(sock, F_GETFL);
-	if (flags < 0) {
-		printf("read sock flag error\n");
+
+	if (flags == -1 ) {
+		
+		/*  Exiting the thread on failure */
+
 		pthread_exit(0);
 	}
+
 	fcntl(sock, F_SETFL, flags | O_NONBLOCK);
 
-	if (AES_set_encrypt_key(conn->key, 128, &aes_key) < 0) {
-		printf("AES_set_encrypt_key error\n");
+		/* AES encryption key set */
+
+	if (AES_set_encrypt_key(socket_connection->key, 128, &aes_key) < 0) {
+		
+		/*  Exiting here on failure */
+
 		exit(1);
 	}
 
 	while (1) {
 
-		while ((n = read(sock, buf, SIZE)) >= 0) {
-			if (n > 0) {
-				char *tempbuf = (char*)malloc(n + 8);
-				unsigned char encr[n];
+		/*  Reading from the ssh fd */
 
-				if (!RAND_bytes(iv, 8)) {
-					printf("Error generating random bytes.\n");
-					exit(1);
-				}
+		while ((val = read(sock, buf, SIZE)) > 0) {
+			if (val > 0) {
+				char *temp_buffer = (char*)malloc(val + 8);
+								
+				unsigned char encr_arr[val];
 
-				memcpy(tempbuf, iv, 8);
-				init_ctr(&state, iv);
-				AES_ctr128_encrypt(buf, encr, n, &aes_key, state.ivec, state.ecount, &state.num);
-				memcpy(tempbuf + 8, encr, n);
-				write(conn->sock, tempbuf, n + 8);
-				free(tempbuf);
+				RAND_bytes(iv, 8);
+
+				//memcpy(temp_buffer, iv, 8);
+				char *d = temp_buffer;
+  				const char *s = iv;
+				int len = 8;
+  				while (len--)
+    				*d++ = *s++;
+
+		/*  Setting num and ecount to zero */
+
+				set_struct_start(&state, iv);
+		
+		/*  Encryption part  */
+
+				AES_ctr128_encrypt(buf, encr_arr, val, &aes_key, state.ivec, state.ecount, &state.num);
+				
+				memcpy(temp_buffer + 8, encr_arr, val);
+				
+				write(socket_connection->sock, temp_buffer, val + 8);
+				
+				free(temp_buffer);
 			}
 
-			if (end == false && n == 0)
+			if (end == false && val == 0)
 				end = true;
 
-			if (n < SIZE)
+			if (val < SIZE)
 				break;
 		}
 
-		while ((n = read(conn->sock, buf, SIZE)) > 0) {
-			unsigned char decr[n - 8];
+		while ((val = read(socket_connection->sock, buf, SIZE)) > 0) {
 
-			if (n < 8) {
-				printf("Packet len < 8\n");
-				close(conn->sock);
+			unsigned char decr[val - 8];
+
+			if (val < 8) {
+				
+				close(socket_connection->sock);
 				close(sock);
-				free(conn);
+				free(socket_connection);
+				
+		/*  Closing the connection and exiting  */
+
+				printf("Freeing connection \n");
+
 				pthread_exit(0);
 			}
 
-			memcpy(iv, buf, 8);
-			init_ctr(&state, iv);
-			AES_ctr128_encrypt(buf + 8, decr, n - 8, &aes_key, state.ivec, state.ecount, &state.num);
-			write(sock, decr, n - 8);
+			// memcpy(iv, buf, 8);
+			char *dm = iv;
+  			const char *sm = buf;
+			int leng = 8;
+  			while (leng--)
+    			*dm++ = *sm++;
 
-			if (n < SIZE)
+		/*  Setting num and ecount to zero */
+
+			set_struct_start(&state, iv);
+
+			AES_ctr128_encrypt(buf + 8, decr, val - 8, &aes_key, state.ivec, state.ecount, &state.num);
+			write(sock, decr, val - 8);
+
+			if (val < SIZE)
 				break;
 		};
 
@@ -109,22 +195,20 @@ void* thread_process(void* proc) {
 			break;
 	}
 
-	close(conn->sock);
+	close(socket_connection->sock);
 	close(sock);
-	free(conn);
+	free(socket_connection);
 	pthread_exit(0);
 	}
 	else
 	{
 		printf("closing due to failure\n");
 		pthread_exit(0);
-		
-
 	}
 }
 
 
-void init_ctr(struct ctr_state *state, const unsigned char iv[8]) {
+void set_struct_start(struct ctr_state *state, const unsigned char iv[8]) {
 	/* aes_ctr128_encrypt requires 'num' and 'ecount' set to zero on the
 	 * first call. */
 	state->num = 0;
@@ -138,10 +222,10 @@ void init_ctr(struct ctr_state *state, const unsigned char iv[8]) {
 }
 
 void startServer(int sock, struct sockaddr_in *client_address, unsigned char *key) {
-	struct connection *connection;
+	struct struct_connection *connection;
 	pthread_t thread;
 
-	connection = (struct connection *)malloc(sizeof(struct connection));
+	connection = (struct struct_connection *)malloc(sizeof(struct struct_connection));
 	connection->sock = accept(sock, &connection->address, &connection->addr_len);
 	if (connection->sock > 0) {
 		connection->client_address = *client_address;
@@ -174,12 +258,7 @@ unsigned char* read_file(char* filename) {
 
 
 int main(int argc, char *argv[]) {
-	int opt = 0;
-	bool server = false;
-	char *dest = NULL;
-	char *destport = NULL;
-	char *listenport = NULL;
-	char *filename = NULL;
+	
 
 	struct hostent *host;
 	struct sockaddr_in server_address, client_address;
@@ -263,7 +342,7 @@ int main(int argc, char *argv[]) {
 
 				memcpy(iv, buf, 8);
 				unsigned char decr[n - 8];
-				init_ctr(&state, iv);
+				set_struct_start(&state, iv);
 				AES_ctr128_encrypt(buf + 8, decr, n - 8, &aes_key, state.ivec, state.ecount, &state.num);
 
 				write(STDOUT_FILENO, decr, n - 8);
@@ -276,15 +355,15 @@ int main(int argc, char *argv[]) {
 					printf("Could not create random bytes\n");
 					exit(1);
 				}
-				char *tempbuf = (char*)malloc(n + 8);
-				memcpy(tempbuf, iv, 8);
+				char *temp_buffer = (char*)malloc(n + 8);
+				memcpy(temp_buffer, iv, 8);
 
 				unsigned char encr[n];
-				init_ctr(&state, iv);
+				set_struct_start(&state, iv);
 				AES_ctr128_encrypt(buf, encr, n, &aes_key, state.ivec, state.ecount, &state.num);
-				memcpy(tempbuf + 8, encr, n);
-				write(sock, tempbuf, n + 8);
-				free(tempbuf);
+				memcpy(temp_buffer + 8, encr, n);
+				write(sock, temp_buffer, n + 8);
+				free(temp_buffer);
 				if (n < SIZE)
 					break;
 			}
