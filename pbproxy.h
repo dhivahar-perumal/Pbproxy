@@ -7,16 +7,16 @@ int flags;
 
 bool end;
 
-int opt = 0;
-bool server = false;
+int optid = 0;
+bool s_mode = false;
 char *dest = NULL;
 char *destport = NULL;
-char *listenport = NULL;
+char *listen_port = NULL;
 char *filename = NULL;
  
 void* thread_process(void* proc);
 
-struct ctr_state {
+struct aes_ctr_state {
 	unsigned char ivec[AES_BLOCK_SIZE];
 	unsigned int num;
 	unsigned char ecount[AES_BLOCK_SIZE];
@@ -33,14 +33,16 @@ struct struct_connection {
 
 struct struct_connection *socket_connection;
 
-struct ctr_state state;
+struct aes_ctr_state state;
 	
 unsigned char iv[8];
 
-void set_struct_start(struct ctr_state *state, const unsigned char iv[8]);
+void set_struct_start(struct aes_ctr_state *state, const unsigned char iv[8]);
 
 void startServer(int sock, struct sockaddr_in *client_address, unsigned char *key);
 
 unsigned char* read_file(char* filename);
+
+unsigned char * read_key(const char *filename);
  
 #endif
