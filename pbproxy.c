@@ -192,9 +192,9 @@ void* thread_process(void* proc) {
 
 		/*  Setting num and ecount to zero */
 
-			int temp_v = val;
-
 			set_struct_start(&state, iv);
+
+			int temp_v = val;
 
 			AES_ctr128_encrypt(buf + 8, decr_arr, vald, &aes_key, state.ivec, state.ecount, &state.num);
 			
@@ -329,17 +329,20 @@ int main(int argc, char *argv[]) {
 	while ((optid = getopt(argc, argv, "l:k:")) != -1) 
 	{
 		switch (optid) {
-		case 'l':
-			listen_port = optarg;
-			listen_port_check = 1;
-			s_mode = true;
-			
-			break;
+
 		case 'k':
 			filename = optarg;
 			file_check = 1;			
 			break;
+
+		case 'l':
+			listen_port = optarg;
+			listen_port_check = 1;
+			s_mode = true;	
+			break;
+		
 		default:
+			printf("Only options -l and -k are supported");
 			return 0;
 		}
 	}
@@ -408,36 +411,34 @@ int main(int argc, char *argv[]) {
 		int sock, n;
 		char buf[SIZE];
 
-		if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-			printf("Connect failed\n");
-			return 0;
-		}
+		connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr));
 
 		fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
 		fcntl(sock, F_SETFL, O_NONBLOCK);
 
-		if (AES_set_encrypt_key(key, 128, &aes_key) < 0) {
-			printf("AES_set_encrypt_key error\n");
-			exit(1);
-		}
+		AES_set_encrypt_key(key, 128, &aes_key);
+
 
 		while (1) {
 			while ((n = read(sock, buf, SIZE)) > 0) {
 				if (n > 8) {
-					
 				
-
-				//memcpy(iv, buf, 8);
+				unsigned char decr_arr[n - 8];				
 
 				char *d_m = iv;
+
 	  			const char *s_m = buf;
+
 				int leng = 8;
+
 	  			while (leng--)
-	    			*d_m++ = *s_m++;
+				{
+		    			*d_m++ = *s_m++;
+				}
 
 				set_struct_start(&state, iv);
 
-				unsigned char decr_arr[n - 8];
+				
 
 			/* pulled code from http://openssl.6102.n7.nabble.com/Question-on-how-to-use-AES-128-CTR-td9415.html for AES reference */
 				
@@ -463,7 +464,17 @@ int main(int argc, char *argv[]) {
 
 				char *temp_buffer = (char*)malloc(n + 8);
 
-				memcpy(temp_buffer, iv, 8);
+				
+				char *d1m = temp_buffer;
+	  			
+				const char *s1m = iv;
+
+				int leng1 = 8;
+
+	  			while (leng1--)
+				{
+	    			*d1m++ = *s1m++;
+				}
 
 			/*  pulled code from http://openssl.6102.n7.nabble.com/Question-on-how-to-use-AES-128-CTR-td9415.html for reference */
 
@@ -489,11 +500,10 @@ int main(int argc, char *argv[]) {
 		/*  Server code resides here */
 
 		int sock;
-		int lisport = (int)strtol(listen_port, NULL, 10);
+		
 		sock = socket(AF_INET, SOCK_STREAM, 0);
 
 		/*  struct value assigning */
-
 
 		/*  pulled code from open source reference https://web.eecs.umich.edu/~sugih/courses/eecs489/common/notes/sockets.txt */
 
@@ -508,6 +518,8 @@ int main(int argc, char *argv[]) {
 		printf("issue with the structs");
 		}
 
+		int lisport = (int)strtol(listen_port, NULL, 10);
+
 		if(saddr)
 		{		
 		server_addr.sin_family = AF_INET;
@@ -520,15 +532,23 @@ int main(int argc, char *argv[]) {
 		}
 
 		bind(sock, (struct sockaddr *)&server_addr, sizeof(server_addr));
-		int listen_check = listen(sock, 10); 
+
+		int listen_check = listen(sock, 10);
+ 
 		if ( listen_check == -1) {
-			printf("Listen failed\n");
+
 			return 0;
 		};
+		
+		printf("Initiating pbproxy server\n");
+		printf("----------------PBPROXY----------------\n");
+		printf("The clients can connect to the server at the post mentioned\n");		
 
 		while (1) {
 			startServer(sock, &client_addr, key);
 		}
+
+		printf("The server is shutting down");
 	}
 	return 1;
 }
